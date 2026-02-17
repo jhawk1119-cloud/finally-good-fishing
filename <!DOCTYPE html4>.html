@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Ultimate Fishing: Infinite Forge</title>
+    <style>
+        :root { --sand: #f2d492; --sky: #87CEEB; --ocean: #0077b6; --gold: #ffd700; --forge: #e67e22; }
+        body { background: var(--sky); font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 20px; color: #333; }
+        #ui-top { display: flex; gap: 20px; background: white; padding: 15px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 10px; width: 850px; justify-content: space-around; }
+        canvas { border: 8px solid var(--sand); border-radius: 20px; background: linear-gradient(to bottom, #a2d2ff, #0077b6); box-shadow: 0 10px 20px rgba(0,0,0,0.2); }
+        .main-layout { display: flex; gap: 20px; width: 950px; margin-top: 20px; height: 500px; }
+        .panel { background: rgba(255,255,255,0.95); border-radius: 15px; padding: 15px; overflow-y: auto; flex: 1; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        .item-row { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #eee; }
+        .btn { background: var(--ocean); color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        .btn-forge { background: var(--forge); }
+        .btn:disabled { background: #ccc; cursor: not-allowed; }
+        #log { font-size: 1.4rem; font-weight: bold; margin: 10px; height: 35px; color: #fff; text-shadow: 2px 2px #000; }
+        .req-text { font-size: 0.75rem; color: #d35400; font-weight: bold; }
+        h3 { margin-top: 0; border-bottom: 2px solid var(--ocean); padding-bottom: 5px; }
+    </style>
+</head>
+<body>
+
+    <div id="ui-top">
+        <div>💰 Cash: <b>$<span id="money">0</span></b></div>
+        <div>🎣 Rod: <b id="rod-name">Wooden Rod</b></div>
+        <div>✨ Multi: <b id="multi">1x</b></div>
+    </div>
+
+    <canvas id="gameCanvas" width="850" height="160"></canvas>
+    <div id="log">READY TO CAST...</div>
+
+    <div class="main-layout">
+        <div class="panel">
+            <h3>🛒 Tackle Shop</h3>
+            <div id="shop-list"></div>
+            <h3 style="margin-top:20px; border-color: var(--forge);">🔥 The Forge (Crafting)</h3>
+            <div id="forge-list"></div>
+        </div>
+        <div class="panel">
+            <h3>📦 Fish Storage</h3>
+            <div id="inv-list"></div>
+        </div>
+    </div>
+
+<script>
+/** * 1. THE DATA (25 Rarities, 15 Rods)
+ */
+const rarities = [
+    { name: "Minnow", chance: 0.25, val: 5, color: "#95a5a6" },
+    { name: "Sardine", chance: 0.15, val: 15, color: "#7f8c8d" },
+    { name: "Bass", chance: 0.12, val: 40, color: "#2ecc71" },
+    { name: "Trout", chance: 0.10, val: 100, color: "#27ae60" },
+    { name: "Salmon", chance: 0.08, val: 250, color: "#e67e22" },
+    { name: "Tuna", chance: 0.06, val: 600, color: "#3498db" },
+    { name: "Swordfish", chance: 0.05, val: 1500, color: "#2980b9" },
+    { name: "Barracuda", chance: 0.04, val: 4000, color: "#16a085" },
+    { name: "Electric Eel", chance: 0.03, val: 10000, color: "#f1c40f" },
+    { name: "Hammerhead", chance: 0.02, val: 25000, color: "#34495e" },
+    { name: "Great White", chance: 0.015, val: 60000, color: "#bdc3c7" },
+    { name: "Colossal Squid", chance: 0.01, val: 150000, color: "#c0392b" },
+    { name: "Magma Ray", chance: 0.008, val: 400000, color: "#e74c3c" },
+    { name: "Neon Jellyfish", chance: 0.005, val: 1000000, color: "#9b59b6" },
+    { name: "Abyssal Horror", chance: 0.003, val: 3000000, color: "#2c3e50" },
+    { name: "Ancient Coelacanth", chance: 0.002, val: 10000000, color: "#95a5a6" },
+    { name: "Golden Whale", chance: 0.0015, val: 50000000, color: "#f1c40f" },
+    { name: "Solar Phoenix", chance: 0.001, val: 200000000, color: "#e67e22" },
+    { name: "Void Serpent", chance: 0.0008, val: 800000000, color: "#000" },
+    { name: "Stellar Dragon", chance: 0.0005, val: 2500000000, color: "#8e44ad" },
+    { name: "Reality Glitch", chance: 0.0003, val: 10000000000, color: "#ff4d4d" },
+    { name: "Dimensional Rift", chance: 0.0002, val: 50000000000, color: "#00f2ff" },
+    { name: "Otreval's Spirit", chance: 0.0001, val: 250000000000, color: "#fff" },
+    { name: "Omniscient Eye", chance: 0.00005, val: 1000000000000, color: "#ff00ff" },
+    { name: "Astral Divine", chance: 0.00001, val: 9999999999999, color: "#ffd700" }
+];
+
+const shopRods = [
+    { id: 0, name: "Wooden Rod", cost: 0, multi: 1, speed: 4 },
+    { id: 1, name: "Bamboo Pole", cost: 500, multi: 5, speed: 4.5 },
+    { id: 2, name: "Fiberglass Rod", cost: 5000, multi: 30, speed: 5 },
+    { id: 3, name: "Carbon Pro", cost: 50000, multi: 150, speed: 5.5 },
+    { id: 4, name: "Titanium Trawler", cost: 500000, multi: 800, speed: 6 },
+    { id: 5, name: "Alloy Destroyer", cost: 10000000, multi: 10000, speed: 7 }
+];
+
+const forgeRods = [
+    { id: 101, name: "Electric Striker", multi: 2500, speed: 6, req: { item: "Electric Eel", qty: 5 }, cost: 100000 },
+    { id: 102, name: "Magma Caster", multi: 15000, speed: 6.5, req: { item: "Magma Ray", qty: 3 }, cost: 2000000 },
+    { id: 103, name: "Void Weaver", multi: 80000, speed: 7, req: { item: "Abyssal Horror", qty: 10 }, cost: 50000000 },
+    { id: 104, name: "Otrevaltaker", multi: 500000, speed: 8, req: { item: "Golden Whale", qty: 5 }, cost: 500000000 },
+    { id: 105, name: "Nebula Thread", multi: 2500000, speed: 9, req: { item: "Stellar Dragon", qty: 2 }, cost: 10000000000 },
+    { id: 106, name: "Reality Breaker", multi: 15000000, speed: 10, req: { item: "Reality Glitch", qty: 1 }, cost: 100000000000 },
+    { id: 107, name: "The Singularity", multi: 100000000, speed: 11, req: { item: "Otreval's Spirit", qty: 1 }, cost: 500000000000 },
+    { id: 108, name: "Astral Harpoon", multi: 900000000, speed: 13, req: { item: "Omniscient Eye", qty: 1 }, cost: 2000000000000 },
+    { id: 109, name: "God-Hand", multi: 5000000000, speed: 15, req: { item: "Astral Divine", qty: 1 }, cost: 10000000000000 }
+];
+
+/** * 2. SYSTEM LOGIC
+ */
+let p = { money: 0, inv: {}, owned: [0], active: 0 };
+let state = "IDLE", bar = 50, dir = 1, target = 300, tW = 100;
+
+function save() { localStorage.setItem('ForgeFish_V3', JSON.stringify(p)); }
+function load() {
+    const s = localStorage.getItem('ForgeFish_V3');
+    if (s) p = JSON.parse(s);
+    updateUI();
+}
+
+function updateUI() {
+    const allRods = [...shopRods, ...forgeRods];
+    const curr = allRods.find(r => r.id === p.active);
+    document.getElementById('money').innerText = p.money.toLocaleString();
+    document.getElementById('rod-name').innerText = curr.name;
+    document.getElementById('multi').innerText = curr.multi.toLocaleString() + "x";
+
+    // Update Shop
+    const sList = document.getElementById('shop-list');
+    sList.innerHTML = '';
+    shopRods.forEach(r => renderItem(r, sList, false));
+
+    // Update Forge
+    const fList = document.getElementById('forge-list');
+    fList.innerHTML = '';
+    forgeRods.forEach(r => renderItem(r, fList, true));
+
+    // Update Inv
+    const iList = document.getElementById('inv-list');
+    iList.innerHTML = '';
+    rarities.forEach(f => {
+        if (p.inv[f.name]) iList.innerHTML += `<div class="item-row"><span style="color:${f.color}">${f.name}</span> <b>x${p.inv[f.name]}</b></div>`;
+    });
+}
+
+function renderItem(r, container, isForge) {
+    const isOwned = p.owned.includes(r.id);
+    const isActive = p.active === r.id;
+    let canBuy = p.money >= r.cost;
+    if (isForge && r.req) canBuy = canBuy && (p.inv[r.req.item] || 0) >= r.req.qty;
+
+    container.innerHTML += `
+        <div class="item-row">
+            <div>
+                <b>${r.name}</b> (x${r.multi.toLocaleString()})<br>
+                <span class="req-text">${isOwned ? 'OWNED' : (isForge ? `Need: ${r.req.qty}x ${r.req.item} & $${r.cost.toLocaleString()}` : `$${r.cost.toLocaleString()}`)}</span>
+            </div>
+            <button class="btn ${isForge ? 'btn-forge' : ''}" onclick="buyRod(${r.id}, ${isForge})" ${(!isOwned && !canBuy) ? 'disabled' : ''}>
+                ${isOwned ? (isActive ? 'Active' : 'Equip') : (isForge ? 'Forge' : 'Buy')}
+            </button>
+        </div>`;
+}
+
+function buyRod(id, isForge) {
+    const all = [...shopRods, ...forgeRods];
+    const r = all.find(x => x.id === id);
+    if (p.owned.includes(id)) {
+        p.active = id;
+    } else {
+        p.money -= r.cost;
+        if (isForge) p.inv[r.req.item] -= r.req.qty;
+        p.owned.push(id);
+        p.active = id;
+    }
+    save(); updateUI();
+}
+
+function resolve() {
+    const all = [...shopRods, ...forgeRods];
+    const curr = all.find(x => x.id === p.active);
+    if (bar >= target && bar <= target + tW) {
+        let roll = Math.random(), cum = 0, fish = rarities[0];
+        for (let r of rarities) {
+            cum += r.chance;
+            if (roll < cum) { fish = r; break; }
+        }
+        const win = fish.val * curr.multi;
+        p.money += win;
+        p.inv[fish.name] = (p.inv[fish.name] || 0) + 1;
+        document.getElementById('log').innerHTML = `<span style="color:${fish.color}">${fish.name}</span> caught! +$${win.toLocaleString()}`;
+    } else {
+        document.getElementById('log').innerText = "Line snapped!";
+    }
+    state = "IDLE";
+    save(); updateUI();
+}
+
+/** * 3. CORE ENGINE
+ */
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+function loop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (state === "MINIGAME") {
+        ctx.fillStyle = "rgba(0,0,0,0.2)";
+        ctx.fillRect(100, 70, 650, 40);
+        ctx.fillStyle = "#ffeb3b";
+        ctx.fillRect(target, 70, tW, 40);
+        const all = [...shopRods, ...forgeRods];
+        const curr = all.find(x => x.id === p.active);
+        bar += curr.speed * dir;
+        if (bar > 740 || bar < 100) dir *= -1;
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(bar, 60, 10, 60);
+    }
+    requestAnimationFrame(loop);
+}
+
+window.addEventListener('keydown', (e) => {
+    if (e.code === "Space") {
+        e.preventDefault();
+        if (state === "IDLE") {
+            state = "WAITING";
+            document.getElementById('log').innerText = "Wait for a bite...";
+            setTimeout(() => { if (state === "WAITING") { state = "MINIGAME"; target = 150 + Math.random() * 450; document.getElementById('log').innerText = "STRIKE!"; } }, 800 + Math.random() * 1500);
+        } else if (state === "MINIGAME") resolve();
+    }
+});
+
+load(); loop();
+</script>
+</body>
+</html>
