@@ -1,0 +1,253 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Ultimate Fishing: Grand Forge</title>
+    <style>
+        :root { --sand: #f2d492; --sky: #87CEEB; --ocean: #0077b6; --gold: #ffd700; --forge: #e67e22; }
+        body { background: var(--sky); font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 20px; color: #333; }
+        
+        /* Layout */
+        #ui-top { display: flex; gap: 20px; background: white; padding: 15px; border-radius: 15px; box-shadow: 0 4px 10px rgba(0,0,0,0.1); margin-bottom: 10px; width: 850px; justify-content: space-around; }
+        .main-layout { display: flex; gap: 20px; width: 950px; margin-top: 20px; height: 550px; }
+        .panel { background: rgba(255,255,255,0.95); border-radius: 15px; padding: 15px; overflow-y: auto; flex: 1; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        
+        /* Components */
+        canvas { border: 8px solid var(--sand); border-radius: 20px; background: #0077b6; }
+        .item-row { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 1px solid #eee; }
+        .btn { background: var(--ocean); color: white; border: none; padding: 8px 12px; border-radius: 6px; cursor: pointer; font-weight: bold; }
+        .btn-forge { background: var(--forge); }
+        .btn-sell { background: #27ae60; width: 100%; margin-top: 10px; }
+        .btn:disabled { background: #ccc; cursor: not-allowed; }
+        
+        #log { font-size: 1.4rem; font-weight: bold; margin: 10px; height: 35px; color: #fff; text-shadow: 2px 2px #000; text-align: center; }
+        .req-text { font-size: 0.75rem; color: #d35400; font-weight: bold; }
+        h3 { margin-top: 0; border-bottom: 2px solid var(--ocean); padding-bottom: 5px; }
+    </style>
+</head>
+<body>
+
+    <div id="ui-top">
+        <div>💰 Cash: <b>$<span id="money">0</span></b></div>
+        <div>🎣 Rod: <b id="rod-name">...</b></div>
+        <div>✨ Multi: <b id="multi">1x</b></div>
+    </div>
+
+    <canvas id="gameCanvas" width="850" height="150"></canvas>
+    <div id="log">PRESS [SPACE] TO CAST</div>
+
+    <div class="main-layout">
+        <div class="panel">
+            <h3>🛒 Tackle Shop</h3>
+            <div id="shop-list"></div>
+            <h3 style="margin-top:20px; border-color: var(--forge);">🔥 The Forge</h3>
+            <div id="forge-list"></div>
+        </div>
+        <div class="panel">
+            <h3>📦 Inventory</h3>
+            <button class="btn btn-sell" onclick="sellAll()">Sell All Fish for Cash</button>
+            <div id="inv-list"></div>
+        </div>
+    </div>
+
+<script>
+/** * 1. GAME DATA (Expanded Rarities & Rods)
+ */
+const rarities = [
+    { name: "Minnow", chance: 0.30, val: 10, color: "#95a5a6" },
+    { name: "Bass", chance: 0.20, val: 50, color: "#2ecc71" },
+    { name: "Salmon", chance: 0.15, val: 200, color: "#e67e22" },
+    { name: "Tuna", chance: 0.10, val: 800, color: "#3498db" },
+    { name: "Swordfish", chance: 0.08, val: 2500, color: "#2980b9" },
+    { name: "Electric Eel", chance: 0.05, val: 10000, color: "#f1c40f" },
+    { name: "Magma Ray", chance: 0.03, val: 50000, color: "#e74c3c" },
+    { name: "Golden Whale", chance: 0.02, val: 250000, color: "#f1c40f" },
+    { name: "Reality Glitch", chance: 0.01, val: 1000000, color: "#ff4d4d" },
+    { name: "Otreval's Spirit", chance: 0.005, val: 10000000, color: "#fff" },
+    { name: "Astral Divine", chance: 0.001, val: 100000000, color: "#ffd700" }
+];
+
+const shopRods = [
+    { id: 0, name: "Wooden Rod", cost: 0, multi: 1, speed: 4 },
+    { id: 1, name: "Carbon Pro", cost: 1000, multi: 10, speed: 5 },
+    { id: 2, name: "Titanium Trawler", cost: 25000, multi: 100, speed: 6 },
+    { id: 3, name: "Alloy Destroyer", cost: 500000, multi: 1000, speed: 7 }
+];
+
+const forgeRods = [
+    { id: 10, name: "Electric Striker", multi: 5000, speed: 8, reqItem: "Electric Eel", reqQty: 5, cost: 100000 },
+    { id: 11, name: "Magma Caster", multi: 50000, speed: 9, reqItem: "Magma Ray", reqQty: 3, cost: 2000000 },
+    { id: 12, name: "Otrevaltaker", multi: 500000, speed: 10, reqItem: "Golden Whale", reqQty: 10, cost: 50000000 },
+    { id: 13, name: "Reality Breaker", multi: 10000000, speed: 12, reqItem: "Reality Glitch", reqQty: 5, cost: 1000000000 },
+    { id: 14, name: "God-Hand", multi: 1000000000, speed: 15, reqItem: "Astral Divine", reqQty: 1, cost: 10000000000 }
+];
+
+/** * 2. STATE MANAGEMENT
+ */
+let player = { money: 0, inventory: {}, ownedIds: [0], activeId: 0 };
+let gameState = "IDLE"; // IDLE, WAITING, MINIGAME
+let barX = 100, barDir = 1, targetX = 300, targetW = 100;
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+function save() { localStorage.setItem('UltimateFishing_V4', JSON.stringify(player)); }
+function load() {
+    const data = localStorage.getItem('UltimateFishing_V4');
+    if (data) player = JSON.parse(data);
+    updateUI();
+}
+
+function updateUI() {
+    const all = [...shopRods, ...forgeRods];
+    const currentRod = all.find(r => r.id === player.activeId);
+    
+    document.getElementById('money').innerText = player.money.toLocaleString();
+    document.getElementById('rod-name').innerText = currentRod.name;
+    document.getElementById('multi').innerText = currentRod.multi.toLocaleString() + "x";
+
+    // Shop List
+    const shopDiv = document.getElementById('shop-list');
+    shopDiv.innerHTML = '';
+    shopRods.forEach(r => renderRod(r, shopDiv, false));
+
+    // Forge List
+    const forgeDiv = document.getElementById('forge-list');
+    forgeDiv.innerHTML = '';
+    forgeRods.forEach(r => renderRod(r, forgeDiv, true));
+
+    // Inventory List
+    const invDiv = document.getElementById('inv-list');
+    invDiv.innerHTML = '';
+    for (let fish in player.inventory) {
+        if (player.inventory[fish] > 0) {
+            invDiv.innerHTML += `<div class="item-row">${fish} <b>x${player.inventory[fish]}</b></div>`;
+        }
+    }
+}
+
+function renderRod(rod, container, isForge) {
+    const owned = player.ownedIds.includes(rod.id);
+    const active = player.activeId === rod.id;
+    let canAfford = player.money >= rod.cost;
+    
+    if (isForge && rod.reqItem) {
+        canAfford = canAfford && (player.inventory[rod.reqItem] || 0) >= rod.reqQty;
+    }
+
+    container.innerHTML += `
+        <div class="item-row">
+            <div>
+                <b>${rod.name}</b><br>
+                <span class="req-text">${owned ? 'OWNED' : (isForge ? `Req: ${rod.reqQty} ${rod.reqItem} & $${rod.cost.toLocaleString()}` : `$${rod.cost.toLocaleString()}`)}</span>
+            </div>
+            <button class="btn ${isForge ? 'btn-forge' : ''}" onclick="buyOrEquip(${rod.id}, ${isForge})" ${(!owned && !canAfford) ? 'disabled' : ''}>
+                ${owned ? (active ? 'Active' : 'Equip') : (isForge ? 'Forge' : 'Buy')}
+            </button>
+        </div>`;
+}
+
+/** * 3. CORE LOGIC
+ */
+function buyOrEquip(id, isForge) {
+    const all = [...shopRods, ...forgeRods];
+    const rod = all.find(r => r.id === id);
+    
+    if (player.ownedIds.includes(id)) {
+        player.activeId = id;
+    } else {
+        player.money -= rod.cost;
+        if (isForge) player.inventory[rod.reqItem] -= rod.reqQty;
+        player.ownedIds.push(id);
+        player.activeId = id;
+    }
+    save(); updateUI();
+}
+
+function sellAll() {
+    let totalSale = 0;
+    for (let fishName in player.inventory) {
+        const count = player.inventory[fishName];
+        const fishData = rarities.find(f => f.name === fishName);
+        if (fishData) totalSale += (fishData.val * count);
+        player.inventory[fishName] = 0;
+    }
+    player.money += totalSale;
+    save(); updateUI();
+}
+
+function handleFishing() {
+    const all = [...shopRods, ...forgeRods];
+    const rod = all.find(r => r.id === player.activeId);
+    
+    const hit = barX >= targetX && barX <= (targetX + targetW);
+    if (hit) {
+        let roll = Math.random(), cum = 0, caughtFish = rarities[0];
+        for (let r of rarities) {
+            cum += r.chance;
+            if (roll < cum) { caughtFish = r; break; }
+        }
+        const payout = caughtFish.val * rod.multi;
+        player.money += payout;
+        player.inventory[caughtFish.name] = (player.inventory[caughtFish.name] || 0) + 1;
+        document.getElementById('log').innerHTML = `<span style="color:${caughtFish.color}">${caughtFish.name}</span> caught! +$${payout.toLocaleString()}`;
+    } else {
+        document.getElementById('log').innerText = "The fish escaped!";
+    }
+    gameState = "IDLE";
+    save(); updateUI();
+}
+
+/** * 4. ANIMATION LOOP
+ */
+function animate() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Background Water
+    ctx.fillStyle = "rgba(255,255,255,0.1)";
+    ctx.fillRect(0, 100, canvas.width, 50);
+
+    if (gameState === "MINIGAME") {
+        // Bar Track
+        ctx.fillStyle = "rgba(0,0,0,0.3)";
+        ctx.fillRect(50, 60, 750, 30);
+        
+        // Target Zone
+        ctx.fillStyle = var(--gold);
+        ctx.fillRect(targetX, 60, targetW, 30);
+        
+        // Moving Bar
+        const all = [...shopRods, ...forgeRods];
+        const rod = all.find(r => r.id === player.activeId);
+        barX += rod.speed * barDir;
+        if (barX > 790 || barX < 50) barDir *= -1;
+        
+        ctx.fillStyle = "white";
+        ctx.fillRect(barX, 50, 10, 50);
+    }
+    requestAnimationFrame(animate);
+}
+
+window.addEventListener('keydown', (e) => {
+    if (e.code === "Space") {
+        e.preventDefault();
+        if (gameState === "IDLE") {
+            gameState = "WAITING";
+            document.getElementById('log').innerText = "Waiting for a bite...";
+            setTimeout(() => {
+                if (gameState === "WAITING") {
+                    gameState = "MINIGAME";
+                    targetX = 100 + Math.random() * 550;
+                    document.getElementById('log').innerText = "STRIKE! (Space)";
+                }
+            }, 800 + Math.random() * 1500);
+        } else if (gameState === "MINIGAME") {
+            handleFishing();
+        }
+    }
+});
+
+load(); animate();
+</script>
+</body>
+</html>
