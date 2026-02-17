@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Ultimate Fishing: Infinite Coast</title>
+    <style>
+        :root { --sand: #fefae0; --sky: #4cc9f0; --ocean: #4361ee; --gold: #f9c74f; --text: #2b2d42; }
+        body { 
+            background: #caf0f8; color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; 
+            display: flex; flex-direction: column; align-items: center; margin: 0; padding: 20px;
+        }
+        /* Top UI */
+        .header { display: flex; gap: 20px; width: 850px; margin-bottom: 15px; }
+        .stat-card { 
+            background: white; padding: 10px 20px; border-radius: 12px; flex: 1;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.05); text-align: center;
+        }
+        .stat-card h4 { margin: 0; font-size: 0.8rem; color: #8d99ae; text-transform: uppercase; }
+        .stat-card p { margin: 5px 0 0; font-size: 1.2rem; font-weight: 800; color: var(--ocean); }
+
+        /* Game Area */
+        #game-container { 
+            border: 8px solid var(--sand); border-radius: 20px; 
+            background: linear-gradient(to bottom, #90e0ef, #0077b6);
+            position: relative; box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+        }
+        canvas { display: block; cursor: crosshair; }
+
+        /* Layout Grid */
+        .bottom-area { display: flex; gap: 20px; width: 866px; margin-top: 20px; }
+        
+        .panel-title { font-weight: 800; margin-bottom: 10px; display: block; color: var(--ocean); }
+
+        .shop-container, .inventory-container {
+            background: white; border-radius: 15px; padding: 15px; 
+            height: 350px; overflow-y: auto; box-shadow: 0 4px 10px rgba(0,0,0,0.05);
+        }
+        .shop-container { flex: 2; }
+        .inventory-container { flex: 1; }
+
+        /* Items */
+        .shop-item {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px; border-bottom: 1px solid #edf2f4;
+        }
+        .shop-item:last-child { border: none; }
+        .shop-item.active { background: #f0f7ff; border-left: 4px solid var(--ocean); }
+
+        .inv-item { display: flex; justify-content: space-between; padding: 5px 0; font-size: 0.9rem; }
+
+        .btn { 
+            background: var(--ocean); border: none; color: white; padding: 8px 16px;
+            border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.2s;
+        }
+        .btn:disabled { background: #cbd5e0; cursor: not-allowed; }
+        .btn:hover:not(:disabled) { background: #3f37c9; transform: translateY(-1px); }
+
+        #log { font-size: 1.3rem; margin: 15px; font-weight: 700; color: #0077b6; min-height: 1.5em; }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div class="stat-card"><h4>Balance</h4><p id="money-display">$0</p></div>
+        <div class="stat-card"><h4>Best Catch</h4><p id="record-display">$0</p></div>
+        <div class="stat-card"><h4>Current Rod</h4><p id="rod-display">Stick</p></div>
+    </div>
+
+    <div id="game-container">
+        <canvas id="gameCanvas" width="850" height="220"></canvas>
+    </div>
+
+    <div id="log">PRESS [SPACE] TO START JOURNEY</div>
+
+    <div class="bottom-area">
+        <div class="shop-container">
+            <span class="panel-title">Tackle Shop</span>
+            <div id="shop-grid"></div>
+        </div>
+        <div class="inventory-container">
+            <span class="panel-title">Fish Collection</span>
+            <div id="inv-grid"></div>
+        </div>
+    </div>
+
+    <button class="btn" style="margin-top: 20px; background: #ef233c;" onclick="resetGame()">Hard Reset Data</button>
+
+<script>
+/** * DATA DEFINITIONS
+ */
+const rods = [
+    { id: 0, name: "Wooden Branch", cost: 0, multi: 1, speed: 3.5 },
+    { id: 1, name: "Bamboo Pole", cost: 200, multi: 5, speed: 4.5 },
+    { id: 2, name: "Fiberglass Rod", cost: 1500, multi: 20, speed: 6 },
+    { id: 3, name: "Carbon Striker", cost: 10000, multi: 100, speed: 8 },
+    { id: 4, name: "Otrevaltaker", cost: 75000, multi: 500, speed: 11 },
+    { id: 5, name: "Void Weaver", cost: 500000, multi: 2500, speed: 15 },
+    { id: 6, name: "Nebula Caster", cost: 5000000, multi: 15000, speed: 20 },
+    { id: 7, name: "The Reality Anchor", cost: 100000000, multi: 200000, speed: 28 },
+    { id: 8, name: "Omnipotence", cost: 1000000000, multi: 5000000, speed: 40 }
+];
+
+const rarities = [
+    { name: "Common", chance: 0.40, val: 10, color: "#94a3b8" },
+    { name: "Rare", chance: 0.20, val: 50, color: "#3a86ff" },
+    { name: "Epic", chance: 0.15, val: 250, color: "#8338ec" },
+    { name: "Legendary", chance: 0.10, val: 1200, color: "#ffbe0b" },
+    { name: "Mythical", chance: 0.07, val: 8000, color: "#fb5607" },
+    { name: "Astral Divine", chance: 0.04, val: 50000, color: "#ff006e" },
+    { name: "Transcendental", chance: 0.03, val: 500000, color: "#00f5d4" },
+    { name: "Reality Glitch", chance: 0.009, val: 10000000, color: "#000000" },
+    { name: "The Singularity", chance: 0.001, val: 100000000, color: "#ffffff" }
+];
+
+let p = {
+    money: 0,
+    record: 0,
+    ownedRods: [0],
+    currentRodId: 0,
+    inventory: {}
+};
+
+/** * ENGINE & STATE
+ */
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+let gameState = "IDLE"; 
+let barPos = 100;
+let barDir = 1;
+let targetPos = 300;
+let targetWidth = 80;
+
+function save() { localStorage.setItem('UltimateFishingSave', JSON.stringify(p)); }
+
+function load() {
+    const data = localStorage.getItem('UltimateFishingSave');
+    if (data) p = JSON.parse(data);
+    updateUI();
+}
+
+function updateUI() {
+    document.getElementById('money-display').innerText = "$" + Math.floor(p.money).toLocaleString();
+    document.getElementById('record-display').innerText = "$" + Math.floor(p.record).toLocaleString();
+    document.getElementById('rod-display').innerText = rods[p.currentRodId].name;
+    
+    // Shop
+    const shopGrid = document.getElementById('shop-grid');
+    shopGrid.innerHTML = '';
+    rods.forEach(r => {
+        const owned = p.ownedRods.includes(r.id);
+        const active = p.currentRodId === r.id;
+        shopGrid.innerHTML += `
+            <div class="shop-item ${active ? 'active' : ''}">
+                <div><b>${r.name}</b><br><small>${owned ? 'Power x'+r.multi : '$'+r.cost.toLocaleString()}</small></div>
+                <button class="btn" onclick="handleShop(${r.id})" ${(p.money < r.cost && !owned) ? 'disabled' : ''}>
+                    ${owned ? (active ? 'Equipped' : 'Equip') : 'Buy'}
+                </button>
+            </div>`;
+    });
+
+    // Inventory
+    const invGrid = document.getElementById('inv-grid');
+    invGrid.innerHTML = '';
+    rarities.forEach(r => {
+        const count = p.inventory[r.name] || 0;
+        invGrid.innerHTML += `
+            <div class="inv-item">
+                <span style="color:${r.color}; font-weight:bold">${r.name}</span>
+                <span>${count}</span>
+            </div>`;
+    });
+}
+
+function handleShop(id) {
+    if (p.ownedRods.includes(id)) {
+        p.currentRodId = id;
+    } else if (p.money >= rods[id].cost) {
+        p.money -= rods[id].cost;
+        p.ownedRods.push(id);
+        p.currentRodId = id;
+    }
+    save(); updateUI();
+}
+
+function startFishing() {
+    if (gameState !== "IDLE") return;
+    gameState = "WAITING";
+    document.getElementById('log').innerText = "Casting line... waiting for bite...";
+    
+    setTimeout(() => {
+        if (gameState !== "WAITING") return;
+        gameState = "MINIGAME";
+        targetPos = 150 + Math.random() * 500;
+        targetWidth = Math.max(12, 100 - (p.currentRodId * 10));
+        document.getElementById('log').innerText = "STRIKE! PRESS SPACE!";
+    }, 1000 + Math.random() * 2000);
+}
+
+function resolveCatch() {
+    const isHit = barPos >= targetPos && barPos <= (targetPos + targetWidth);
+    if (isHit) {
+        const roll = Math.random();
+        let cum = 0; let fish = rarities[0];
+        for (let r of rarities) {
+            cum += r.chance;
+            if (roll < cum) { fish = r; break; }
+        }
+        
+        const reward = fish.val * rods[p.currentRodId].multi;
+        p.money += reward;
+        if (reward > p.record) p.record = reward;
+        p.inventory[fish.name] = (p.inventory[fish.name] || 0) + 1;
+        
+        document.getElementById('log').innerHTML = `<span style="color:${fish.color}">Caught ${fish.name}! (+$${reward.toLocaleString()})</span>`;
+    } else {
+        document.getElementById('log').innerText = "The fish escaped...";
+    }
+    gameState = "IDLE";
+    save(); updateUI();
+}
+
+function animate() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    
+    // Draw "Water"
+    ctx.fillStyle = "rgba(0, 119, 182, 0.5)";
+    ctx.fillRect(0, 150, canvas.width, 70);
+
+    if (gameState === "MINIGAME") {
+        // Track
+        ctx.fillStyle = "rgba(255,255,255,0.2)";
+        ctx.fillRect(100, 170, 650, 30);
+        // Zone
+        ctx.fillStyle = var(--gold);
+        ctx.fillRect(targetPos, 170, targetWidth, 30);
+        // Bar
+        barPos += rods[p.currentRodId].speed * barDir;
+        if (barPos > 740 || barPos < 100) barDir *= -1;
+        
+        ctx.fillStyle = "white";
+        ctx.fillRect(barPos, 160, 10, 50);
+        ctx.strokeStyle = "black"; ctx.lineWidth = 2;
+        ctx.strokeRect(barPos, 160, 10, 50);
+    }
+    requestAnimationFrame(animate);
+}
+
+window.addEventListener('keydown', (e) => {
+    if (e.code === "Space") {
+        e.preventDefault();
+        if (gameState === "IDLE") startFishing();
+        else if (gameState === "MINIGAME") resolveCatch();
+    }
+});
+
+function resetGame() { if(confirm("Delete all save data?")) { localStorage.clear(); location.reload(); } }
+
+load();
+animate();
+</script>
+</body>
+</html>
