@@ -1,0 +1,243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Ultimate Fishing: Contract Board</title>
+    <style>
+        :root { --p1: #4361ee; --p2: #f72585; --gold: #ffd700; --bg: #0b090a; --green: #52b788; --dark: #161a1d; --border: #45070a; }
+        body { background: var(--bg); color: #fff; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 20px; }
+        
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; width: 1100px; margin-bottom: 15px; }
+        .stat-card { background: var(--dark); padding: 12px; border-radius: 12px; border: 1px solid var(--border); text-align: center; }
+
+        canvas { background: radial-gradient(circle, #001219 0%, #000000 100%); border: 4px solid #370617; border-radius: 20px; box-shadow: 0 0 40px rgba(247, 37, 133, 0.15); }
+
+        .main-container { display: flex; gap: 20px; width: 1250px; margin-top: 20px; height: 650px; }
+        .scroll-panel { background: var(--dark); padding: 20px; border-radius: 15px; flex: 1; overflow-y: auto; border: 1px solid var(--border); }
+        
+        .item-row { background: #0b090a; padding: 10px; margin-bottom: 8px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #333; }
+
+        .contract-card { background: linear-gradient(135deg, #1b263b 0%, #0b090a 100%); border: 2px solid var(--p1); padding: 15px; border-radius: 10px; margin-bottom: 20px; }
+        
+        h3 { margin: 0 0 10px 0; color: var(--p2); border-bottom: 2px solid #660708; padding-bottom: 5px; position: sticky; top: -20px; background: var(--dark); z-index: 10; font-size: 1rem; }
+
+        .btn { padding: 8px 16px; cursor: pointer; border: none; border-radius: 5px; font-weight: bold; transition: 0.3s; }
+        .btn-buy { background: var(--p1); color: white; }
+        .btn-contract { background: var(--green); color: #000; font-size: 0.9rem; }
+        .btn-tier { background: #333; color: white; margin: 2px; flex: 1; }
+        .btn:disabled { opacity: 0.2; cursor: not-allowed; }
+
+        .m-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: 4px; padding: 10px; background: #0b090a; border-radius: 10px; }
+        .m-slot { width: 100%; aspect-ratio: 1; background: #222; border-radius: 2px; }
+        .m-filled { background: var(--gold); box-shadow: 0 0 5px var(--gold); }
+        
+        #log { font-size: 1.1rem; font-weight: bold; height: 30px; margin-bottom: 10px; color: var(--p1); text-align: center; }
+        .tier-btns { display: flex; justify-content: space-between; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+
+    <div class="stats-grid">
+        <div class="stat-card">CASH<br><b id="m-val" style="color: var(--green);">$0</b></div>
+        <div class="stat-card">ROD<br><b id="r-val" style="color: var(--p2);">...</b></div>
+        <div class="stat-card">MUSEUM<br><b id="mu-val" style="color: var(--gold);">1.00x</b></div>
+        <div class="stat-card">TOTAL<br><b id="c-val">0</b></div>
+    </div>
+
+    <div id="log">DEPLOYED</div>
+    <canvas id="canvas" width="900" height="150"></canvas>
+
+    <div class="main-container">
+        <div class="scroll-panel" style="flex: 0.8;">
+            <h3>📋 Contract Board</h3>
+            <div class="tier-btns">
+                <button class="btn btn-tier" onclick="setTier('Easy')">Easy</button>
+                <button class="btn btn-tier" onclick="setTier('Medium')">Medium</button>
+                <button class="btn btn-tier" onclick="setTier('Legendary')">Legendary</button>
+            </div>
+            <div id="contract-box" class="contract-card">
+                <div id="contract-details">Select a tier to begin.</div>
+                <button id="contract-btn" class="btn btn-contract" style="width:100%;" onclick="claimContract()">Claim Reward</button>
+            </div>
+            <h3>🛒 Shop & Forge</h3>
+            <div id="shop-box"></div>
+        </div>
+
+        <div class="scroll-panel" style="flex: 0.5;">
+            <h3>📦 Vault</h3>
+            <button class="btn" style="background:#660708; color:white; width:100%; margin-bottom:10px;" onclick="sellAll()">Mass Sell (0.75x)</button>
+            <div id="inv-box"></div>
+        </div>
+
+        <div class="scroll-panel">
+            <h3>🏛️ Museum (140 Species)</h3>
+            <div id="m-grid" class="m-grid"></div>
+        </div>
+    </div>
+
+<script>
+/** * 1. DATABASE
+ */
+const rarityTiers = [
+    { name: "Common", chance: 0.30, val: 5, fish: ["Minnow", "Sardine", "Anchovy", "Herring", "Carp", "Perch", "Guppy", "Goldfish", "Stickleback", "Dace", "Roach", "Chub"] },
+    { name: "Uncommon", chance: 0.18, val: 30, fish: ["Bass", "Trout", "Catfish", "Tilapia", "Cod", "Haddock", "Flounder", "Pollock", "Bream", "Tench", "Zander", "Barbel"] },
+    { name: "Rare", chance: 0.12, val: 150, fish: ["Neon Tetra", "Angel Fish", "Discus", "Betta", "Koi", "Salmon", "Pike", "Snapper", "Grouper", "Mahi Mahi", "Wahoo", "Cob"] },
+    { name: "Epic", chance: 0.08, val: 800, fish: ["Tuna", "Swordfish", "Marlin", "Sailfish", "Barracuda", "Sturgeon", "Halibut", "Napolefish", "Lionfish", "Stonefish", "Trigger", "Puffer"] },
+    { name: "Legendary", chance: 0.05, val: 5000, fish: ["Golden Carp", "Arowana", "Electric Eel", "Sawfish", "Hammerhead", "Great White", "Manta Ray", "Oarfish", "Sunfish", "Frilled Shark", "Goblin Shark", "Megamouth"] },
+    { name: "Mythical", chance: 0.03, val: 30000, fish: ["Magma Ray", "Phoenix Fin", "Inferno Eel", "Lava Guppy", "Cinder Carp", "Obsidian Bass", "Ember Trout", "Flame Snapper", "Blaze Pike", "Heat Marlin", "Scorched Cod", "Steam Shark"] },
+    { name: "Abyssal", chance: 0.02, val: 125000, fish: ["Abyssal Horror", "Angler Fiend", "Gulper Eel", "Vampire Squid", "Dumbo Octopus", "Trench Crawler", "Void Shrimp", "Shadow Bass", "Dark Jelly", "Ink Devil", "Blind Shark", "Grave Ray"] },
+    { name: "Celestial", chance: 0.015, val: 600000, fish: ["Nebula Seraph", "Star Gazer", "Comet Tail", "Lunar Whale", "Solar Ray", "Nova Shark", "Galaxy Eel", "Meteor Minnow", "Pulsar Pike", "Astral Bass", "Cosmos Cod", "Zenith Fin"] },
+    { name: "Void", chance: 0.01, val: 4000000, fish: ["Void Whale", "Null Fish", "Zero Point Eel", "Static Shark", "Empty Bass", "Forgotten Fin", "Echo Ray", "Rift Swimmer", "Dark Matter Squid", "Oblivion Cod", "Singularity Snapper", "Vacuum Carp"] },
+    { name: "Corrupted", chance: 0.006, val: 25000000, fish: ["Reality Glitch", "Data Worm", "Pixel Piranha", "Buffer Bloat", "Logic Eel", "Error Ray", "Crash Carp", "Hex Shark", "Binary Bass", "Kernel Koi", "System Snapper", "Virus Vold"] },
+    { name: "Ancient", chance: 0.003, val: 250000000, fish: ["The Singularity", "Alpha Fin", "Omega Whale", "Chronos Eel", "Aeon Shark", "Primeval Ray", "Legacy Bass", "Ancestral Trout", "Origin Cod", "First Fish", "Eternal Pike", "Relic Ray"] },
+    { name: "Divine", chance: 0.001, val: 5000000000, fish: ["Astral Divine", "Seraphim", "God-Fin", "Heavenly Ray", "Aura Eel", "Spirit Shark", "Holy Halibut", "Light Leaper", "Prayer Pike", "Miracle Minnow", "Grace Grouper", "Eden Eel"] }
+];
+
+const rods = [
+    { id: 0, name: "Old Twig", cost: 0, multi: 1, speed: 4, type: 'shop' },
+    { id: 1, name: "Carbon Pole", cost: 5000, multi: 15, speed: 5, type: 'shop' },
+    { id: 2, name: "Titanium Gear", cost: 250000, multi: 180, speed: 6, type: 'shop' },
+    { id: 3, name: "Hyperion", cost: 50000000, multi: 50000, speed: 8, type: 'shop' },
+    { id: 10, name: "Eel Striker", cost: 1000000, multi: 1200, speed: 7, type: 'ultra', reqRod: 1, reqFish: "Electric Eel", qty: 5 },
+    { id: 11, name: "Void Siphon", cost: 5000000000, multi: 5000000, speed: 10, type: 'ultra', reqRod: 3, reqFish: "Void Whale", qty: 3 },
+    { id: 12, name: "GOD-SLAYER", cost: 1000000000000, multi: 999999999, speed: 20, type: 'ultra', reqRod: 11, reqFish: "Astral Divine", qty: 1 }
+];
+
+let p = { money: 0, inv: {}, owned: [0], active: 0, total: 0, caughtLog: [], job: null };
+let state = "IDLE", barX = 100, barD = 1, tarX = 300, tarW = 100;
+
+/** * 2. CONTRACT LOGIC
+ */
+function setTier(tier) {
+    const rod = rods.find(r => r.id === p.active);
+    let targetCount, reward;
+    
+    if (tier === 'Easy') {
+        targetCount = 5 + Math.floor(rod.multi / 10);
+        reward = (rod.multi * 200) + 100;
+    } else if (tier === 'Medium') {
+        targetCount = 15 + Math.floor(rod.multi / 5);
+        reward = (rod.multi * 600) + 500;
+    } else {
+        targetCount = 50 + Math.floor(rod.multi / 2);
+        reward = (rod.multi * 1500) + 2000;
+    }
+    
+    p.job = { count: 0, target: Math.min(targetCount, 500), reward: reward, tier: tier };
+    save(); updateUI();
+}
+
+function claimContract() {
+    if (p.job && p.job.count >= p.job.target) {
+        p.money += p.job.reward;
+        p.job = null;
+        updateUI();
+    }
+}
+
+/** * 3. CORE
+ */
+function save() { localStorage.setItem('FishFinale_V10', JSON.stringify(p)); }
+function load() {
+    const s = localStorage.getItem('FishFinale_V10');
+    if (s) p = JSON.parse(s);
+    updateUI();
+}
+
+function updateUI() {
+    const rod = rods.find(r => r.id === p.active);
+    const mBonus = 1 + (p.caughtLog.length * 0.075);
+    
+    document.getElementById('m-val').innerText = "$" + Math.floor(p.money).toLocaleString();
+    document.getElementById('r-val').innerText = rod.name;
+    document.getElementById('c-val').innerText = p.total;
+    document.getElementById('mu-val').innerText = mBonus.toFixed(2) + "x";
+
+    const sBox = document.getElementById('shop-box'); sBox.innerHTML = '';
+    rods.forEach(r => {
+        const has = p.owned.includes(r.id), act = p.active === r.id;
+        let can = p.money >= r.cost;
+        if (r.type === 'ultra') can = can && p.owned.includes(r.reqRod) && (p.inv[r.reqFish] || 0) >= r.qty;
+        sBox.innerHTML += `<div class="item-row"><div><b>${r.name}</b><br><small>${has?'Owned':'$'+r.cost.toLocaleString()}</small></div><button class="btn btn-buy" onclick="buyRod(${r.id})" ${(!has && !can) ? 'disabled' : ''}>${has?(act?'Active':'Equip'):'Get'}</button></div>`;
+    });
+
+    const cDet = document.getElementById('contract-details');
+    const cBtn = document.getElementById('contract-btn');
+    if (p.job) {
+        cDet.innerHTML = `<b>TIER:</b> ${p.job.tier}<br><b>TARGET:</b> Catch ${p.job.target} Fish<br><b>PROGRESS:</b> ${p.job.count} / ${p.job.target}<br><b>REWARD:</b> $${p.job.reward.toLocaleString()}`;
+        cBtn.disabled = p.job.count < p.job.target;
+        cBtn.innerText = p.job.count < p.job.target ? "INCOMPLETE" : "CLAIM REWARD";
+    }
+
+    const iBox = document.getElementById('inv-box'); iBox.innerHTML = '';
+    for (let k in p.inv) if (p.inv[k] > 0) iBox.innerHTML += `<div class="item-row"><span>${k}</span><b>x${p.inv[k]}</b></div>`;
+
+    const mGrid = document.getElementById('m-grid'); mGrid.innerHTML = '';
+    rarityTiers.forEach(t => t.fish.forEach(f => {
+        mGrid.innerHTML += `<div class="m-slot ${p.caughtLog.includes(f)?'m-filled':''}" title="${f}"></div>`;
+    }));
+}
+
+function buyRod(id) {
+    const r = rods.find(x => x.id === id);
+    if (p.owned.includes(id)) p.active = id;
+    else { p.money -= r.cost; if(r.type==='ultra') p.inv[r.reqFish]-=r.qty; p.owned.push(id); p.active = id; }
+    save(); updateUI();
+}
+
+function sellAll() {
+    let t = 0;
+    for (let k in p.inv) {
+        let tier = rarityTiers.find(x => x.fish.includes(k));
+        if (tier) t += (tier.val * p.inv[k]);
+        p.inv[k] = 0;
+    }
+    const mBonus = 1 + (p.caughtLog.length * 0.075);
+    p.money += (t * mBonus * 0.75); 
+    save(); updateUI();
+}
+
+const cvs = document.getElementById('canvas'), ctx = cvs.getContext('2d');
+function loop() {
+    ctx.clearRect(0, 0, cvs.width, cvs.height);
+    if (state === "MINIGAME") {
+        ctx.fillStyle = "#222"; ctx.fillRect(100, 60, 700, 30);
+        ctx.fillStyle = var(--p2); ctx.fillRect(tarX, 60, tarW, 30);
+        let r = rods.find(x => x.id === p.active);
+        barX += r.speed * barD; if (barX > 790 || barX < 100) barD *= -1;
+        ctx.fillStyle = "#fff"; ctx.fillRect(barX, 50, 10, 50);
+    }
+    requestAnimationFrame(loop);
+}
+
+window.addEventListener('keydown', (e) => {
+    if (e.code === "Space") {
+        e.preventDefault();
+        if (state === "IDLE") {
+            state = "WAITING"; document.getElementById('log').innerText = "SCANNING...";
+            setTimeout(() => { if (state === "WAITING") { state = "MINIGAME"; tarX = 200 + Math.random() * 450; document.getElementById('log').innerText = "STRIKE!"; } }, 500 + Math.random() * 800);
+        } else if (state === "MINIGAME") {
+            if (barX >= tarX && barX <= tarX + tarW) {
+                let roll = Math.random(), cum = 0, sel = rarityTiers[0];
+                for (let t of rarityTiers) { cum += t.chance; if (roll < cum) { sel = t; break; } }
+                let name = sel.fish[Math.floor(Math.random() * sel.fish.length)];
+                
+                const mb = 1 + (p.caughtLog.length * 0.075);
+                let r = rods.find(x => x.id === p.active);
+                let win = sel.val * r.multi * mb;
+                
+                p.money += win; p.total++;
+                if (p.job) p.job.count++;
+                p.inv[name] = (p.inv[name] || 0) + 1;
+                if (!p.caughtLog.includes(name)) p.caughtLog.push(name);
+                document.getElementById('log').innerHTML = `<span style="color:${sel.col}">${name}</span>! +$${win.toLocaleString()}`;
+            } else { document.getElementById('log').innerText = "MISS"; }
+            state = "IDLE"; save(); updateUI();
+        }
+    }
+});
+
+load(); loop();
+</script>
+</body>
+</html>
