@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ultimate Fishing: Restored & Unique</title>
+    <style>
+        :root { --p1: #4361ee; --p2: #f72585; --gold: #ffd700; --bg: #0b090a; --green: #52b788; --dark: #161a1d; --event: #ff0000; }
+        body { background: var(--bg); color: #fff; font-family: 'Segoe UI', sans-serif; display: flex; flex-direction: column; align-items: center; margin: 0; padding: 20px; }
+        
+        .stats-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; width: 1200px; margin-bottom: 15px; }
+        .stat-card { background: var(--dark); padding: 12px; border-radius: 12px; border: 1px solid #333; text-align: center; }
+
+        /* FIXED CANVAS VISIBILITY */
+        canvas { background: #001219; border: 4px solid #444; border-radius: 15px; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+
+        .main-container { display: flex; gap: 20px; width: 1300px; margin-top: 20px; height: 700px; }
+        .scroll-panel { background: var(--dark); padding: 20px; border-radius: 15px; flex: 1; overflow-y: auto; border: 1px solid #333; }
+        
+        .item-row { background: #0b090a; padding: 12px; margin-bottom: 8px; border-radius: 8px; display: flex; justify-content: space-between; align-items: center; border: 1px solid #333; }
+        .btn { padding: 10px 15px; cursor: pointer; border: none; border-radius: 5px; font-weight: bold; transition: 0.2s; }
+        .btn-buy { background: var(--p1); color: white; }
+        .btn-equip { background: var(--green); color: black; }
+        .btn:disabled { opacity: 0.2; cursor: not-allowed; }
+
+        .m-grid { display: grid; grid-template-columns: repeat(8, 1fr); gap: 6px; padding: 10px; }
+        .m-slot { aspect-ratio: 1; background: #222; border-radius: 4px; display: flex; align-items: center; justify-content: center; font-size: 1.3rem; opacity: 0.2; filter: grayscale(1); border: 1px solid #333; }
+        .m-filled { opacity: 1; filter: grayscale(0); border: 1px solid var(--gold); background: #333; }
+        
+        #log { font-size: 1.4rem; font-weight: bold; height: 40px; color: var(--gold); text-shadow: 0 0 10px rgba(255,215,0,0.3); }
+        .rarity-tag { font-size: 0.7rem; padding: 2px 5px; border-radius: 3px; text-transform: uppercase; margin-top: 4px; display: inline-block; }
+    </style>
+</head>
+<body>
+
+    <div class="stats-grid">
+        <div class="stat-card">BANK<br><b id="m-val" style="color: var(--green);">$0</b></div>
+        <div class="stat-card">ROD<br><b id="r-val" style="color: var(--p2);">Starter Stick</b></div>
+        <div class="stat-card">MUSEUM<br><b id="col-val" style="color: var(--gold);">0/38</b></div>
+        <div class="stat-card">EVENT<br><b id="e-status">Idle</b></div>
+    </div>
+
+    <div id="log">PRESS [SPACE] TO CAST</div>
+    <canvas id="canvas" width="900" height="120"></canvas>
+
+    <div class="main-container">
+        <div class="scroll-panel" style="flex: 1.4;">
+            <h3>🛒 The Master Shop (30 Unique Rods)</h3>
+            <div id="shop-box"></div>
+        </div>
+
+        <div class="scroll-panel">
+            <h3>🏛️ Global Museum</h3>
+            <div id="m-grid" class="m-grid"></div>
+        </div>
+
+        <div class="scroll-panel" style="flex: 0.8;">
+            <h3>📦 Vault</h3>
+            <button class="btn" style="background:#660708; color:white; width:100%; margin-bottom:15px;" onclick="sellAll()">Sell All (0.75x)</button>
+            <div id="inv-box"></div>
+        </div>
+    </div>
+
+<script>
+// 1. DATA - 30 UNIQUE RODS
+const rods = [
+    { id: 0, name: "Sewer Stick", cost: 0, multi: 1, speed: 4 },
+    { id: 1, name: "Bamboo Pole", cost: 1000, multi: 5, speed: 4.5 },
+    { id: 2, name: "Fiberglass Flex", cost: 5000, multi: 15, speed: 5 },
+    { id: 3, name: "Carbon Striker", cost: 25000, multi: 40, speed: 5.5 },
+    { id: 4, name: "Ironbound Reel", cost: 100000, multi: 100, speed: 6 },
+    { id: 5, name: "Steel Serpent", cost: 500000, multi: 250, speed: 6.5 },
+    { id: 6, name: "Titanium Trawler", cost: 2000000, multi: 600, speed: 7 },
+    { id: 7, name: "Gilded Hook", cost: 10000000, multi: 1500, speed: 7.5 },
+    { id: 8, name: "Emerald Eel-Pole", cost: 50000000, multi: 4000, speed: 8 },
+    { id: 9, name: "Diamond Drag", cost: 200000000, multi: 10000, speed: 8.5 },
+    { id: 10, name: "Obsidian Talon", cost: 1e9, multi: 25000, speed: 9 },
+    { id: 11, name: "Magma Master", cost: 5e9, multi: 60000, speed: 9.5 },
+    { id: 12, name: "Inferno Rod", cost: 25e9, multi: 150000, speed: 10 },
+    { id: 13, name: "Plasma Pole", cost: 1e11, multi: 400000, speed: 10.5 },
+    { id: 14, name: "Void Siphon", cost: 5e11, multi: 1e6, speed: 11 },
+    { id: 15, name: "Gravity Grasp", cost: 2e12, multi: 3e6, speed: 12 },
+    { id: 16, name: "Nebula Needle", cost: 1e13, multi: 1e7, speed: 13 },
+    { id: 17, name: "Cosmos Caster", cost: 5e13, multi: 5e7, speed: 14 },
+    { id: 18, name: "Reality Ripper", cost: 2e14, multi: 2e8, speed: 15 },
+    { id: 19, name: "Chrono-Line", cost: 1e15, multi: 1e9, speed: 16 },
+    { id: 20, name: "Dimension Diver", cost: 1e16, multi: 5e9, speed: 17 },
+    { id: 21, name: "Eternal Finisher", cost: 1e17, multi: 2e10, speed: 18 },
+    { id: 22, name: "Stellar Spine", cost: 5e17, multi: 1e11, speed: 19 },
+    { id: 23, name: "Galaxy Goad", cost: 1e18, multi: 5e11, speed: 20 },
+    { id: 24, name: "Universal Anchor", cost: 1e19, multi: 2e12, speed: 22 },
+    { id: 25, name: "Absolute Zero", cost: 1e20, multi: 1e13, speed: 24 },
+    { id: 26, name: "Concept Catcher", cost: 1e21, multi: 5e13, speed: 26 },
+    { id: 27, name: "The Alpha", cost: 1e22, multi: 2e14, speed: 28 },
+    { id: 28, name: "The Omega", cost: 1e23, multi: 1e15, speed: 30 },
+    { id: 29, name: "THE SINGULARITY", cost: 1e25, multi: 9.9e16, speed: 35 }
+];
+
+// 38 RARITIES
+const fishTiers = [
+    { n: "Common", c: 0.2, v: 10, f: "🐟" }, { n: "Uncommon", c: 0.15, v: 50, f: "🐠" },
+    { n: "Rare", c: 0.1, v: 200, f: "🐡" }, { n: "Epic", c: 0.08, v: 1000, f: "🐬" },
+    { n: "Legendary", c: 0.06, v: 5000, f: "🦈" }, { n: "Mythical", c: 0.05, v: 25000, f: "🦑" },
+    { n: "Ancient", c: 0.04, v: 100000, f: "🐢" }, { n: "Divine", c: 0.03, v: 500000, f: "✨" },
+    { n: "Astral", c: 0.025, v: 2e6, f: "🌠" }, { n: "Cursed", c: 0.02, v: 10e6, f: "💀" },
+    { n: "Galaxy", c: 0.018, v: 50e6, f: "🌌" }, { n: "Void", c: 0.015, v: 200e6, f: "🌑" },
+    { n: "Reality", c: 0.012, v: 1e9, f: "👁️" }, { n: "Paradox", c: 0.01, v: 5e9, f: "🌀" },
+    { n: "Singularity", c: 0.008, v: 20e9, f: "🕳️" }, { n: "Quantum", c: 0.007, v: 100e9, f: "⚛️" },
+    { n: "Etheric", c: 0.006, v: 500e9, f: "🌫️" }, { n: "Chrono", c: 0.005, v: 1e12, f: "⏳" },
+    { n: "Cosmic", c: 0.004, v: 5e12, f: "☄️" }, { n: "Omega", c: 0.003, v: 25e12, f: "Ω" },
+    { n: "Eldritch", c: 0.002, v: 100e12, f: "🐙" }, { n: "Luminous", c: 0.0015, v: 500e12, f: "💡" },
+    { n: "Stellar", c: 0.001, v: 2e15, f: "⭐" }, { n: "Nebula", c: 0.0009, v: 10e15, f: "☁️" },
+    { n: "Solaris", c: 0.0008, v: 50e15, f: "☀️" }, { n: "Abyssal", c: 0.0007, v: 200e15, f: "🔱" },
+    { n: "Spectral", c: 0.0006, v: 1e18, f: "👻" }, { n: "Transcendent", c: 0.0005, v: 5e18, f: "🧘" },
+    { n: "Infinity", c: 0.0004, v: 25e18, f: "∞" }, { n: "Universal", c: 0.0003, v: 100e18, f: "🌍" },
+    { n: "Multiversal", c: 0.0002, v: 500e18, f: "🌐" }, { n: "Timeless", c: 0.0001, v: 2e21, f: "🕰️" },
+    { n: "Absolute", c: 0.00008, v: 10e21, f: "👑" }, { n: "Conceptual", c: 0.00005, v: 50e21, f: "💭" },
+    { n: "Existence", c: 0.00003, v: 200e21, f: "🌱" }, { n: "Origin", c: 0.00001, v: 1e24, f: "🥚" },
+    { n: "Alpha", c: 0.000005, v: 10e24, f: "A" }, { n: "Outer God", c: 0.000001, v: 999e24, f: "👾" }
+];
+
+let p = { money: 0, inv: {}, owned: [0], active: 0, caughtLog: [] };
+let gameState = "IDLE", barX = 100, barD = 1, tarX = 300, tarW = 100;
+
+// 2. LOGIC
+function save() { localStorage.setItem('UltFish_Restored_V1', JSON.stringify(p)); }
+function load() {
+    const s = localStorage.getItem('UltFish_Restored_V1');
+    if (s) p = JSON.parse(s);
+    updateUI();
+}
+
+function updateUI() {
+    document.getElementById('m-val').innerText = "$" + Math.floor(p.money).toLocaleString();
+    document.getElementById('r-val').innerText = rods[p.active].name;
+    document.getElementById('col-val').innerText = p.caughtLog.length + "/38";
+
+    const sBox = document.getElementById('shop-box'); sBox.innerHTML = '';
+    rods.forEach(r => {
+        const has = p.owned.includes(r.id);
+        const current = p.active === r.id;
+        sBox.innerHTML += `
+            <div class="item-row">
+                <div><b>${r.name}</b><br><small>Power: x${r.multi.toLocaleString()}</small></div>
+                <button class="btn ${has ? 'btn-equip' : 'btn-buy'}" onclick="handleRod(${r.id})" ${(!has && p.money < r.cost) ? 'disabled' : ''}>
+                    ${has ? (current ? 'ACTIVE' : 'EQUIP') : '$' + r.cost.toLocaleString()}
+                </button>
+            </div>`;
+    });
+
+    const mGrid = document.getElementById('m-grid'); mGrid.innerHTML = '';
+    fishTiers.forEach(t => {
+        const caught = p.caughtLog.includes(t.f);
+        mGrid.innerHTML += `<div class="m-slot ${caught ? 'm-filled' : ''}" title="${t.n}">${t.f}</div>`;
+    });
+
+    const vBox = document.getElementById('inv-box'); vBox.innerHTML = '';
+    for(let k in p.inv) if(p.inv[k]>0) vBox.innerHTML += `<div class="item-row"><span>${k}</span><b>x${p.inv[k]}</b></div>`;
+}
+
+function handleRod(id) {
+    if(p.owned.includes(id)) p.active = id;
+    else { p.money -= rods[id].cost; p.owned.push(id); p.active = id; }
+    save(); updateUI();
+}
+
+function sellAll() {
+    let tot = 0;
+    for(let k in p.inv) {
+        let t = fishTiers.find(x => x.f === k);
+        if(t) tot += t.v * p.inv[k];
+        p.inv[k] = 0;
+    }
+    p.money += tot * 0.75; save(); updateUI();
+}
+
+// 3. ENGINE
+const cvs = document.getElementById('canvas'), ctx = cvs.getContext('2d');
+function loop() {
+    ctx.clearRect(0,0,900,120);
+    
+    if(gameState === "MINIGAME") {
+        // Background track
+        ctx.fillStyle = "#111";
+        ctx.fillRect(100, 50, 700, 30);
+        
+        // Target zone
+        ctx.fillStyle = "#f72585";
+        ctx.fillRect(tarX, 50, tarW, 30);
+        
+        // Moving Bar
+        let r = rods[p.active];
+        barX += r.speed * barD;
+        if(barX > 790 || barX < 100) barD *= -1;
+        
+        ctx.fillStyle = "#fff";
+        ctx.fillRect(barX, 40, 12, 50);
+        ctx.strokeStyle = "#gold";
+        ctx.lineWidth = 2;
+        ctx.strokeRect(barX, 40, 12, 50);
+    }
+    requestAnimationFrame(loop);
+}
+
+window.addEventListener('keydown', (e) => {
+    if(e.code === "Space") {
+        e.preventDefault();
+        if(gameState === "IDLE") {
+            gameState = "WAITING";
+            document.getElementById('log').innerText = "CASTING...";
+            setTimeout(() => {
+                if(gameState === "WAITING") {
+                    gameState = "MINIGAME";
+                    tarX = 200 + Math.random() * 450;
+                    document.getElementById('log').innerText = "STRIKE! HIT SPACE!";
+                }
+            }, 500 + Math.random() * 1000);
+        } else if(gameState === "MINIGAME") {
+            if(barX >= tarX && barX <= tarX + tarW) {
+                let roll = Math.random();
+                let cum = 0, sel = fishTiers[0];
+                for(let t of fishTiers) {
+                    cum += t.c;
+                    if(roll < cum) { sel = t; break; }
+                }
+                
+                let gain = sel.v * rods[p.active].multi;
+                p.money += gain;
+                p.inv[sel.f] = (p.inv[sel.f] || 0) + 1;
+                if(!p.caughtLog.includes(sel.f)) p.caughtLog.push(sel.f);
+                document.getElementById('log').innerHTML = `<span style="color:white">CAUGHT ${sel.f}!</span> +$${gain.toLocaleString()}`;
+            } else {
+                document.getElementById('log').innerText = "MISSED!";
+            }
+            gameState = "IDLE";
+            save(); updateUI();
+        }
+    }
+});
+
+load(); loop();
+</script>
+</body>
+</html>
