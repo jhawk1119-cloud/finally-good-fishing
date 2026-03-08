@@ -1,0 +1,287 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Ultimate Fishing: Eternal Forge - FINAL VERSION</title>
+    <style>
+        body { 
+            background: #4cc9f0; font-family: 'Segoe UI', sans-serif; 
+            display: flex; flex-direction: column; align-items: center; padding: 20px; color: #2b2d42;
+            transition: background-color 1s ease;
+        }
+        .stats-bar { 
+            background: white; padding: 15px; border-radius: 15px; display: flex; 
+            gap: 20px; margin-bottom: 10px; width: 950px; justify-content: center; box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            flex-wrap: wrap;
+        }
+        canvas { background: #0077b6; border: 8px solid #f2d492; border-radius: 20px; box-shadow: 0 10px 25px rgba(0,0,0,0.2); }
+        
+        .layout { display: flex; gap: 20px; width: 1000px; margin-top: 20px; height: 600px; }
+        .panel { background: rgba(255,255,255,0.9); padding: 20px; border-radius: 15px; flex: 1; overflow-y: auto; box-shadow: 0 4px 10px rgba(0,0,0,0.1); }
+        
+        .item { 
+            display: flex; justify-content: space-between; align-items: center; 
+            padding: 12px; border-bottom: 1px solid #ddd;
+        }
+        .btn { padding: 8px 15px; cursor: pointer; font-weight: bold; border-radius: 6px; border: none; transition: 0.2s; }
+        .buy-btn { background: #4361ee; color: white; }
+        .forge-btn { background: #f72585; color: white; }
+        .luck-btn { background: #2ecc71; color: white; }
+        .sell-btn { background: #4cc9f0; color: white; width: 100%; margin-bottom: 15px; font-size: 16px; }
+        .btn:disabled { background: #bdc3c7; cursor: not-allowed; }
+        .btn:hover:not(:disabled) { transform: scale(1.05); filter: brightness(1.1); }
+        
+        #log { font-size: 22px; font-weight: bold; color: white; margin: 15px; text-shadow: 2px 2px #000; height: 35px; text-align: center; }
+        h3 { margin-top: 0; color: #0077b6; border-bottom: 2px solid #0077b6; }
+        .luck-text { color: #2ecc71; font-weight: bold; }
+        b { color: #4361ee; }
+    </style>
+</head>
+<body>
+
+    <div class="stats-bar">
+        <div>💰 Cash: <b id="m-val">$0</b></div>
+        <div>🎣 Rod: <b id="r-val">Wooden Rod</b></div>
+        <div>✨ Multi: <b id="x-val">1x</b></div>
+        <div>📈 Lvl: <b id="lvl-val">1</b></div>
+        <div>🍀 Luck: <b id="l-val" class="luck-text">1.0x</b></div>
+        <div>☁️ Weather: <b id="w-val">Sunny</b></div>
+    </div>
+
+    <canvas id="canvas" width="900" height="160"></canvas>
+    <div id="log">SPACE TO CAST</div>
+
+    <div class="layout">
+        <div class="panel">
+            <h3>🧪 Alchemy & Shop</h3>
+            <div id="luck-box">
+                <div class="item">
+                    <div><b>Luck Potion</b><br><small>Permanent +0.1x Luck</small></div>
+                    <button class="btn luck-btn" onclick="buyLuck()">Buy ($<span id="luck-cost">500</span>)</button>
+                </div>
+            </div>
+            <div id="shop-box"></div>
+            <h3 style="margin-top:20px; color: #f72585; border-color: #f72585;">⚒️ The Forge</h3>
+            <div id="forge-box"></div>
+        </div>
+        <div class="panel">
+            <h3>🎒 Collection</h3>
+            <button class="btn sell-btn" onclick="sellAll()">Sell All Items</button>
+            <div id="inv-box"></div>
+        </div>
+    </div>
+
+<script>
+/** * 1. THE BESTIARY (37 FISH TOTAL)
+ */
+const rarities = [
+    { name: "Sardine", chance: 0.25, val: 10, col: "#94a3b8" },
+    { name: "Bass", chance: 0.15, val: 50, col: "#2ecc71" },
+    { name: "Trout", chance: 0.12, val: 200, col: "#3498db" },
+    { name: "Catfish", chance: 0.10, val: 450, col: "#7f8c8d" },
+    { name: "Salmon", chance: 0.08, val: 900, col: "#ff7f50" },
+    { name: "Tuna", chance: 0.07, val: 2500, col: "#4361ee" },
+    { name: "Mahi Mahi", chance: 0.06, val: 5000, col: "#00ffcc" },
+    { name: "Swordfish", chance: 0.05, val: 12000, col: "#4895ef" },
+    { name: "Hammerhead", chance: 0.04, val: 25000, col: "#5d6d7e" },
+    { name: "Golden Carp", chance: 0.03, val: 75000, col: "#ffd700" },
+    { name: "Ghost Ray", chance: 0.02, val: 150000, col: "#e1e1e1" },
+    { name: "Electric Eel", chance: 0.015, val: 400000, col: "#fee440" },
+    { name: "Prism Fin", chance: 0.012, val: 850000, col: "#ff00ff" },
+    { name: "Magma Ray", chance: 0.01, val: 2000000, col: "#f94144" },
+    { name: "Deepsea Angler", chance: 0.008, val: 5000000, col: "#1a1a1a" },
+    { name: "Abyssal Horror", chance: 0.006, val: 15000000, col: "#560bad" },
+    { name: "Stellar Jelly", chance: 0.005, val: 40000000, col: "#a29bfe" },
+    { name: "Void Whale", chance: 0.004, val: 100000000, col: "#3a0ca3" },
+    { name: "Comet Tail", chance: 0.003, val: 250000000, col: "#fab1a0" },
+    { name: "Nebula Squid", chance: 0.002, val: 750000000, col: "#7209b7" },
+    { name: "Solar Flare Fish", chance: 0.0015, val: 2000000000, col: "#fdcb6e" },
+    { name: "Galaxy Shark", chance: 0.001, val: 5000000000, col: "#b5179e" },
+    { name: "Black Hole Eel", chance: 0.0008, val: 15000000000, col: "#2d3436" },
+    { name: "Dimensional Eel", chance: 0.0006, val: 40000000000, col: "#f72585" },
+    { name: "Chronos Minnow", chance: 0.0004, val: 100000000000, col: "#55efc4" },
+    { name: "Time Leaper", chance: 0.0003, val: 300000000000, col: "#4cc9f0" },
+    { name: "Paradox Trout", chance: 0.0002, val: 800000000000, col: "#ffeaa7" },
+    { name: "Reality Glitch", chance: 0.0001, val: 2500000000000, col: "#000000" },
+    { name: "Atlas Guppy", chance: 0.00008, val: 7000000000000, col: "#6c5ce7" },
+    { name: "The Singularity", chance: 0.00005, val: 20000000000000, col: "#ffffff" },
+    { name: "Cosmic Whale", chance: 0.00003, val: 60000000000000, col: "#0984e3" },
+    { name: "Astral Divine", chance: 0.00002, val: 150000000000000, col: "#ffd700" },
+    { name: "Omnipotent Eye", chance: 0.00001, val: 500000000000000, col: "#ff7675" },
+    { name: "Eternal Phoenix", chance: 0.000005, val: 2000000000000000, col: "#d63031" },
+    { name: "Absolute Zero", chance: 0.000002, val: 10000000000000000, col: "#74b9ff" },
+    { name: "Origin Core", chance: 0.000001, val: 50000000000000000, col: "#00cec9" },
+    { name: "The Creator", chance: 0.0000005, val: 999999999999999999, col: "#636e72" }
+];
+
+/** * 2. THE ARMORY (29 RODS TOTAL)
+ */
+const rods = [
+    { id: 0, name: "Wooden Rod", cost: 0, multi: 1, speed: 4, type: 'shop', luck: 1.0 },
+    { id: 1, name: "Carbon Pole", cost: 1500, multi: 15, speed: 5, type: 'shop', luck: 1.1 },
+    { id: 2, name: "Titanium Caster", cost: 25000, multi: 120, speed: 6, type: 'shop', luck: 1.2 },
+    { id: 3, name: "Alloy King", cost: 250000, multi: 1000, speed: 7, type: 'shop', luck: 1.5 },
+    { id: 4, name: "Diamond Thread", cost: 5000000, multi: 8000, speed: 8, type: 'shop', luck: 2.0 },
+    { id: 5, name: "Master's Will", cost: 100000000, multi: 50000, speed: 9, type: 'shop', luck: 3.0 },
+    { id: 6, name: "Emerald Hook", cost: 1000000000, multi: 250000, speed: 10, type: 'shop', luck: 4.5 },
+    { id: 7, name: "Ruby Reel", cost: 15000000000, multi: 1200000, speed: 11, type: 'shop', luck: 6.0 },
+    { id: 8, name: "Sapphire Sink", cost: 100000000000, multi: 8000000, speed: 12, type: 'shop', luck: 8.0 },
+    { id: 9, name: "Obsidian Pole", cost: 750000000000, multi: 50000000, speed: 13, type: 'shop', luck: 12.0 },
+    { id: 100, name: "Plasma Rod", cost: 5000000000000, multi: 300000000, speed: 14, type: 'shop', luck: 20.0 },
+    { id: 101, name: "Quasar Stick", cost: 40000000000000, multi: 2000000000, speed: 15, type: 'shop', luck: 35.0 },
+    { id: 102, name: "Neutron Whip", cost: 250000000000000, multi: 15000000000, speed: 16, type: 'shop', luck: 60.0 },
+    { id: 103, name: "God-Tier Rod", cost: 1000000000000000, multi: 100000000000, speed: 17, type: 'shop', luck: 100.0 },
+    { id: 104, name: "Devourer", cost: 50000000000000000, multi: 999999999999, speed: 20, type: 'shop', luck: 250.0 },
+    { id: 10, name: "Electric Striker", cost: 500000, multi: 4000, speed: 8, type: 'forge', req: "Electric Eel", qty: 5, luck: 2.5 },
+    { id: 11, name: "Magma Weaver", cost: 10000000, multi: 80000, speed: 9, type: 'forge', req: "Magma Ray", qty: 3, luck: 5.0 },
+    { id: 12, name: "Void Taker", cost: 250000000, multi: 1000000, speed: 10, type: 'forge', req: "Void Whale", qty: 5, luck: 10.0 },
+    { id: 13, name: "Nebula Siphon", cost: 5000000000, multi: 25000000, speed: 12, type: 'forge', req: "Nebula Squid", qty: 10, luck: 25.0 },
+    { id: 14, name: "Galaxy Reaper", cost: 50000000000, multi: 500000000, speed: 14, type: 'forge', req: "Galaxy Shark", qty: 2, luck: 50.0 },
+    { id: 20, name: "Solar Harvester", cost: 200000000000, multi: 2000000000, speed: 15, type: 'forge', req: "Solar Flare Fish", qty: 5, luck: 80.0 },
+    { id: 21, name: "Event Horizon", cost: 1000000000000, multi: 10000000000, speed: 16, type: 'forge', req: "Black Hole Eel", qty: 3, luck: 150.0 },
+    { id: 22, name: "Chronos Spear", cost: 5000000000000, multi: 75000000000, speed: 17, type: 'forge', req: "Chronos Minnow", qty: 4, luck: 300.0 },
+    { id: 23, name: "Paradox Hook", cost: 25000000000000, multi: 500000000000, speed: 18, type: 'forge', req: "Paradox Trout", qty: 2, luck: 600.0 },
+    { id: 24, name: "Atlas Pillar", cost: 100000000000000, multi: 2000000000000, speed: 19, type: 'forge', req: "Atlas Guppy", qty: 5, luck: 1000.0 },
+    { id: 25, name: "Singularity Rod", cost: 500000000000000, multi: 10000000000000, speed: 20, type: 'forge', req: "The Singularity", qty: 1, luck: 2500.0 },
+    { id: 26, name: "Cosmic Harpoon", cost: 2000000000000000, multi: 80000000000000, speed: 22, type: 'forge', req: "Cosmic Whale", qty: 1, luck: 5000.0 },
+    { id: 27, name: "Eye of Odin", cost: 10000000000000000, multi: 500000000000000, speed: 24, type: 'forge', req: "Omnipotent Eye", qty: 1, luck: 10000.0 },
+    { id: 28, name: "Creator's Hand", cost: 999000000000000000, multi: 9999999999999999, speed: 30, type: 'forge', req: "The Creator", qty: 1, luck: 50000.0 }
+];
+
+const weatherEffects = {
+    "Sunny": { boost: 1.0, color: "#4cc9f0" },
+    "Rainy": { boost: 1.5, color: "#00b4d8" },
+    "Stormy": { boost: 2.5, color: "#7209b7" }
+};
+
+let p = { money: 0, inv: {}, owned: [0], active: 0, xp: 0, lvl: 1, luckBonus: 1.0, luckPots: 0, lastWeather: "Sunny" };
+let state = "IDLE", barX = 100, barD = 1, tarX = 300, tarW = 100;
+
+/** * 3. SYSTEMS
+ */
+function updateUI() {
+    const r = rods.find(x => x.id === p.active);
+    const totalLuck = (p.luckBonus * r.luck).toFixed(1);
+    document.getElementById('m-val').innerText = "$" + p.money.toLocaleString();
+    document.getElementById('r-val').innerText = r.name;
+    document.getElementById('x-val').innerText = r.multi.toLocaleString() + "x";
+    document.getElementById('lvl-val').innerText = p.lvl;
+    document.getElementById('l-val').innerText = totalLuck + "x";
+    document.getElementById('w-val').innerText = p.lastWeather;
+
+    const luckCost = Math.floor(500 * Math.pow(1.5, p.luckPots));
+    document.getElementById('luck-cost').innerText = luckCost.toLocaleString();
+
+    const sBox = document.getElementById('shop-box');
+    const fBox = document.getElementById('forge-box');
+    sBox.innerHTML = ''; fBox.innerHTML = '';
+
+    rods.forEach(rod => {
+        const owned = p.owned.includes(rod.id);
+        const active = p.active === rod.id;
+        let can = p.money >= rod.cost;
+        if (rod.type === 'forge') can = can && (p.inv[rod.req] || 0) >= rod.qty;
+        const html = `<div class="item"><div><b>${rod.name}</b><br><small>${owned?'OWNED':(rod.type==='forge'?'Need: '+rod.qty+' '+rod.req+' & $'+rod.cost.toLocaleString():'$'+rod.cost.toLocaleString())}</small></div><button class="btn ${rod.type==='shop'?'buy-btn':'forge-btn'}" onclick="buy(${rod.id})" ${(!owned && !can) ? 'disabled' : ''}>${owned ? (active ? 'Active' : 'Equip') : 'Get'}</button></div>`;
+        if(rod.type === 'shop') sBox.innerHTML += html; else fBox.innerHTML += html;
+    });
+
+    const iBox = document.getElementById('inv-box');
+    iBox.innerHTML = '';
+    for (let k in p.inv) if (p.inv[k] > 0) iBox.innerHTML += `<div class="item">${k} <b>x${p.inv[k]}</b></div>`;
+}
+
+function buyLuck() {
+    const cost = Math.floor(500 * Math.pow(1.5, p.luckPots));
+    if (p.money >= cost) { p.money -= cost; p.luckBonus += 0.1; p.luckPots++; save(); updateUI(); }
+}
+
+function buy(id) {
+    const r = rods.find(x => x.id === id);
+    if (p.owned.includes(id)) p.active = id;
+    else { p.money -= r.cost; if (r.type === 'forge') p.inv[r.req] -= r.qty; p.owned.push(id); p.active = id; }
+    save(); updateUI();
+}
+
+function sellAll() {
+    for (let k in p.inv) { let count = p.inv[k]; let data = rarities.find(f => f.name === k); if (data) p.money += (data.val * count); p.inv[k] = 0; }
+    save(); updateUI();
+}
+
+function addXP(amount) {
+    p.xp += amount;
+    let nextLvl = p.lvl * 1000;
+    if (p.xp >= nextLvl) { p.lvl++; p.xp = 0; document.getElementById('log').innerHTML = `<span style="color:#ffd700">LEVEL UP! Now Level ${p.lvl}</span>`; }
+}
+
+function changeWeather() {
+    const keys = Object.keys(weatherEffects);
+    p.lastWeather = keys[Math.floor(Math.random() * keys.length)];
+    document.body.style.backgroundColor = weatherEffects[p.lastWeather].color;
+    updateUI();
+}
+
+function save() { localStorage.setItem('EternalFish_SaveV_FINAL', JSON.stringify(p)); }
+function load() {
+    let s = localStorage.getItem('EternalFish_SaveV_FINAL');
+    if (s) { let loaded = JSON.parse(s); p = {...p, ...loaded}; }
+    updateUI();
+}
+
+/** * 4. ENGINE & CONTROLS
+ */
+const cvs = document.getElementById('canvas');
+const ctx = cvs.getContext('2d');
+
+function loop() {
+    ctx.clearRect(0, 0, cvs.width, cvs.height);
+    if (state === "MINIGAME") {
+        ctx.fillStyle = "rgba(0,0,0,0.3)";
+        ctx.fillRect(100, 65, 700, 30);
+        ctx.fillStyle = "#ffd700";
+        ctx.fillRect(tarX, 65, tarW, 30);
+        const r = rods.find(x => x.id === p.active);
+        let speedMult = (p.lastWeather === "Stormy") ? 1.8 : 1.0;
+        barX += (r.speed * speedMult) * barD;
+        if (barX > 790 || barX < 100) barD *= -1;
+        ctx.fillStyle = "white";
+        ctx.fillRect(barX, 55, 12, 50);
+    }
+    requestAnimationFrame(loop);
+}
+
+window.addEventListener('keydown', (e) => {
+    if (e.code === "Space") {
+        e.preventDefault();
+        if (state === "IDLE") {
+            state = "WAITING"; document.getElementById('log').innerText = "Casting...";
+            setTimeout(() => { if (state !== "WAITING") return; state = "MINIGAME"; tarX = 150 + Math.random() * 500; document.getElementById('log').innerText = "STRIKE!"; }, 800 + Math.random() * 1200);
+        } else if (state === "MINIGAME") {
+            if (barX >= tarX && barX <= tarX + tarW) {
+                const r = rods.find(x => x.id === p.active);
+                const totalLuck = p.luckBonus * r.luck;
+                
+                // --- CORRECTED WEIGHTED LUCK LOGIC ---
+                let weightedRarities = rarities.map(f => ({ ...f, weight: f.val > 100 ? f.chance * totalLuck : f.chance }));
+                let totalWeight = weightedRarities.reduce((sum, f) => sum + f.weight, 0);
+                let roll = Math.random() * totalWeight; 
+                let cum = 0, f = rarities[0];
+                for (let fish of weightedRarities) { cum += fish.weight; if (roll < cum) { f = fish; break; } }
+                
+                let wBoost = weatherEffects[p.lastWeather].boost;
+                let lvlBoost = 1 + (p.lvl * 0.05);
+                let win = Math.floor(f.val * r.multi * wBoost * lvlBoost);
+                
+                p.money += win; p.inv[f.name] = (p.inv[f.name] || 0) + 1;
+                addXP(f.val / 10);
+                document.getElementById('log').innerHTML = `<span style="color:${f.col}">${f.name}</span> caught! +$${win.toLocaleString()}`;
+            } else { document.getElementById('log').innerText = "Lost it!"; }
+            state = "IDLE"; save(); updateUI();
+        }
+    }
+});
+
+setInterval(changeWeather, 45000);
+load(); loop();
+</script>
+</body>
+</html>
