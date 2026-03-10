@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>FISHING MULTIVERSE: 8-BIT VOYAGER</title>
+    <style>
+        :root { --neon: #00f2ff; --pink: #ff00ff; --gold: #ffd700; --bg: #0a0a12; }
+        body { 
+            background: var(--bg); font-family: 'Press Start 2P', 'Courier New', monospace; 
+            display: flex; flex-direction: column; align-items: center; padding: 20px; color: white;
+            transition: background 0.8s ease; overflow: hidden;
+        }
+        /* Navigation */
+        .nav-bar { 
+            background: rgba(0,0,0,0.8); padding: 10px; border: 2px solid #444; 
+            display: flex; gap: 10px; margin-bottom: 10px; border-radius: 0px;
+        }
+        .world-btn { padding: 10px 15px; border: 2px solid #fff; cursor: pointer; font-family: inherit; font-size: 10px; transition: 0.3s; }
+        .world-btn.active { background: #fff !important; color: #000 !important; box-shadow: 0 0 15px currentColor; }
+
+        .stats-grid { 
+            display: grid; grid-template-columns: repeat(4, 1fr); gap: 15px; 
+            width: 950px; background: #111; border: 3px solid #333; padding: 15px; margin-bottom: 15px;
+            font-size: 12px;
+        }
+        canvas { background: #000; border: 5px solid #333; image-rendering: pixelated; }
+        
+        /* Transition Overlay */
+        #travel-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: #000; z-index: 100; display: none;
+            flex-direction: column; align-items: center; justify-content: center;
+        }
+        .star { position: absolute; background: white; width: 4px; height: 4px; opacity: 0.8; }
+        
+        #rocket {
+            font-size: 50px; position: absolute; left: -100px;
+            text-shadow: 2px 2px #ff0000;
+            image-rendering: pixelated;
+        }
+
+        .layout { display: flex; gap: 20px; width: 1000px; height: 450px; margin-top: 15px; }
+        .panel { background: #000; border: 2px solid #444; padding: 20px; flex: 1; overflow-y: auto; }
+        
+        .item { display: flex; justify-content: space-between; align-items: center; padding: 10px; border-bottom: 2px solid #222; font-size: 10px; }
+        .btn { padding: 8px; cursor: pointer; border: none; font-family: inherit; font-size: 9px; }
+        .buy-btn { background: var(--neon); color: #000; }
+        .sell-btn { background: #fff; color: #000; width: 100%; margin-bottom: 15px; }
+
+        #log { font-size: 16px; height: 35px; margin: 10px; text-align: center; color: var(--gold); }
+        b { color: var(--neon); }
+    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+</head>
+<body>
+
+    <div id="travel-overlay">
+        <div id="rocket">🚀</div>
+        <h2 id="travel-text" style="margin-top: 150px; letter-spacing: 5px;">WARPING...</h2>
+    </div>
+
+    <div class="nav-bar">
+        <button id="btn-0" class="world-btn active" style="background: #00f2ff; color: #000;" onclick="switchWorld(0)">CYBER TUNDRA</button>
+        <button id="btn-1" class="world-btn" style="background: #7209b7; color: #fff;" onclick="switchWorld(1)">VOID TRENCH</button>
+        <button id="btn-2" class="world-btn" style="background: #ffd700; color: #000;" onclick="switchWorld(2)">STAR ARCHIVE</button>
+    </div>
+
+    <div class="stats-grid">
+        <div>CASH: <b id="m-val">$0</b></div>
+        <div>DRIVE: <b id="r-val">BASIC</b></div>
+        <div>LUCK: <b id="l-val">1.0x</b></div>
+        <div>LVL: <b id="lvl-val">1</b></div>
+    </div>
+
+    <canvas id="canvas" width="900" height="140"></canvas>
+    <div id="log">PRESS [SPACE] TO SCAN WATER</div>
+
+    <div class="layout">
+        <div class="panel">
+            <h3 id="world-title" style="font-size: 14px; color: var(--pink);">WORLD_MARKET</h3>
+            <div id="shop-box"></div>
+        </div>
+        <div class="panel">
+            <h3 style="font-size: 14px;">STORAGE</h3>
+            <button class="btn sell-btn" onclick="sellAll()">LIQUIDATE ASSETS</button>
+            <div id="inv-box"></div>
+        </div>
+    </div>
+
+<script>
+const worlds = [
+    { name: "Cyber Tundra", color: "#00f2ff", bg: "#050510", speed: 8, fish: [{name:"Data_Cod",val:100,chance:0.4},{name:"Viral_Eel",val:1000,chance:0.1}], rods: [{name:"Link_Rod",cost:0,multi:1,size:80},{name:"Quantum_V2",cost:5000,multi:10,size:85}] },
+    { name: "Void Trench", color: "#7209b7", bg: "#0a0015", speed: 12, fish: [{name:"Dark_Matter",val:500,chance:0.4},{name:"Void_Ray",val:5000,chance:0.1}], rods: [{name:"Heavy_Lead",cost:25000,multi:50,size:70},{name:"Event_Horizon",cost:200000,multi:500,size:60}] },
+    { name: "Star Archive", color: "#ffd700", bg: "#151000", speed: 5, fish: [{name:"Light_Dust",val:2000,chance:0.4},{name:"Supernova",val:50000,chance:0.05}], rods: [{name:"Astro_Hook",cost:1000000,multi:2000,size:100},{name:"The_Original",cost:50000000,multi:100000,size:120}] }
+];
+
+let p = { cash: 0, worldIdx: 0, lvl: 1, xp: 0, inv: {}, activeRodIdx: 0, ownedRods: [,,] };
+let state = "IDLE", barX = 100, barD = 1, tarX = 300, tarW = 100;
+
+function switchWorld(idx) {
+    if (state !== "IDLE" || p.worldIdx === idx) return;
+    
+    // START 8-BIT TRAVEL ANIMATION
+    const overlay = document.getElementById('travel-overlay');
+    const rocket = document.getElementById('rocket');
+    const travelText = document.getElementById('travel-text');
+    
+    overlay.style.display = 'flex';
+    travelText.innerText = "HEADING TO " + worlds[idx].name.toUpperCase() + "...";
+    
+    // Create random stars
+    overlay.querySelectorAll('.star').forEach(s => s.remove());
+    for(let i=0; i<50; i++) {
+        let s = document.createElement('div');
+        s.className = 'star';
+        s.style.top = Math.random() * 100 + "%";
+        s.style.left = Math.random() * 100 + "%";
+        overlay.appendChild(s);
+    }
+
+    // Rocket animation
+    rocket.style.left = "-100px";
+    rocket.style.top = "40%";
+    let pos = -100;
+    let anim = setInterval(() => {
+        pos += 15;
+        rocket.style.left = pos + "px";
+        rocket.style.transform = `translateY(${Math.sin(pos/20)*10}px)`; // Wiggle
+        if (pos > window.innerWidth + 100) {
+            clearInterval(anim);
+            finishTravel(idx);
+        }
+    }, 16);
+}
+
+function finishTravel(idx) {
+    p.worldIdx = idx;
+    p.activeRodIdx = 0;
+    const w = worlds[idx];
+    document.body.style.background = w.bg;
+    document.getElementById('canvas').style.borderColor = w.color;
+    document.getElementById('travel-overlay').style.display = 'none';
+    
+    document.querySelectorAll('.world-btn').forEach((b, i) => {
+        b.classList.toggle('active', i === idx);
+    });
+    updateUI();
+}
+
+function updateUI() {
+    const w = worlds[p.worldIdx];
+    const r = w.rods[p.activeRodIdx];
+    document.getElementById('m-val').innerText = "$" + Math.floor(p.cash).toLocaleString();
+    document.getElementById('r-val').innerText = r.name;
+    document.getElementById('lvl-val').innerText = p.lvl;
+    document.getElementById('l-val').innerText = (1 + (p.lvl*0.1)).toFixed(1) + "x";
+    
+    const sBox = document.getElementById('shop-box');
+    sBox.innerHTML = '';
+    w.rods.forEach((rod, i) => {
+        const owned = p.ownedRods[p.worldIdx].includes(i);
+        sBox.innerHTML += `<div class="item"><div>${rod.name}<br>$${rod.cost.toLocaleString()}</div>
+        <button class="btn buy-btn" onclick="buyRod(${i})" ${(!owned && p.cash < rod.cost) ? 'disabled' : ''} style="background:${w.color}">${owned ? (p.activeRodIdx === i ? 'ON' : 'SET') : 'GET'}</button></div>`;
+    });
+
+    const iBox = document.getElementById('inv-box');
+    iBox.innerHTML = '';
+    for (let k in p.inv) if (p.inv[k] > 0) iBox.innerHTML += `<div class="item">${k} x${p.inv[k]}</div>`;
+}
+
+function buyRod(idx) {
+    const w = worlds[p.worldIdx];
+    if (p.ownedRods[p.worldIdx].includes(idx)) p.activeRodIdx = idx;
+    else { p.cash -= w.rods[idx].cost; p.ownedRods[p.worldIdx].push(idx); p.activeRodIdx = idx; }
+    updateUI();
+}
+
+function sellAll() {
+    for (let k in p.inv) {
+        let fish; worlds.forEach(w => { let f = w.fish.find(x => x.name === k); if(f) fish = f; });
+        if (fish) p.cash += (fish.val * p.inv[k]); p.inv[k] = 0;
+    }
+    updateUI();
+}
+
+const cvs = document.getElementById('canvas'), ctx = cvs.getContext('2d');
+function loop() {
+    ctx.clearRect(0, 0, cvs.width, cvs.height);
+    if (state === "MINIGAME") {
+        const w = worlds[p.worldIdx];
+        ctx.fillStyle = "#111"; ctx.fillRect(100, 55, 700, 30);
+        ctx.fillStyle = w.color; ctx.fillRect(tarX, 55, tarW, 30);
+        ctx.fillStyle = "#fff"; ctx.fillRect(barX, 45, 10, 50);
+        barX += w.speed * barD;
+        if (barX > 790 || barX < 100) barD *= -1;
+    }
+    requestAnimationFrame(loop);
+}
+
+window.addEventListener('keydown', (e) => {
+    if (e.code === "Space") {
+        e.preventDefault();
+        const w = worlds[p.worldIdx], r = w.rods[p.activeRodIdx];
+        if (state === "IDLE") {
+            state = "WAITING"; document.getElementById('log').innerText = "SCANNING...";
+            setTimeout(() => { state = "MINIGAME"; tarW = r.size; tarX = 150 + Math.random()*(600-tarW); document.getElementById('log').innerText = "STRIKE!"; }, 1000);
+        } else if (state === "MINIGAME") {
+            if (barX >= tarX && barX <= tarX + tarW) {
+                let fish = w.fish[Math.random() < 0.1 ? 1 : 0];
+                let win = fish.val * r.multi;
+                p.cash += win; p.inv[fish.name] = (p.inv[fish.name] || 0) + 1;
+                p.xp += fish.val / 5; if(p.xp >= p.lvl*500) { p.lvl++; p.xp=0; }
+                document.getElementById('log').innerHTML = `REAPED: ${fish.name} (+$${win.toLocaleString()})`;
+            } else { document.getElementById('log').innerText = "SIGNAL LOST"; }
+            state = "IDLE"; updateUI();
+        }
+    }
+});
+
+updateUI(); loop();
+</script>
+</body>
+</html>
